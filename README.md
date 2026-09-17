@@ -1,6 +1,6 @@
-# Purple Team Adversary Prioritisation Dashboard
+# BOX Treat Intel Web App
 
-A dark-themed React dashboard for visualising Purple Team adversary prioritisation data mapped to the MITRE ATT&CK framework. Backed by a lightweight Node.js API server that handles CrowdStrike Intel API syncing.
+A dark-themed React dashboard for visualising Adversary prioritisation, Mitre Att&ck TTPs prioritisation and Threat Model data mapped to the MITRE ATT&CK framework. Backed by a lightweight Node.js API server that handles CrowdStrike Intel API syncing.
 
 ---
 
@@ -23,7 +23,7 @@ npm install -g pnpm
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/your-org/purple_team_priorities_app.git
+git clone git@git.dev.box.net:sfiliaggi/threatintel
 cd purple_team_priorities_app
 
 # 2. Install all workspace dependencies
@@ -50,7 +50,7 @@ The API server integrates with the CrowdStrike Falcon Intel API to automatically
 
 You have two options:
 
-**Option A — Environment variables** (recommended for production / Replit Secrets):
+**Option A — Environment variables** :
 
 ```bash
 CS_CLIENT_ID=your_client_id
@@ -175,6 +175,7 @@ BASE_PATH=/purple-team/ pnpm --filter @workspace/purple-team-dashboard run build
 | Page | Route | Description |
 |------|-------|-------------|
 | Actor Prioritisation | `/` | Ranked actor table, TTP risk chart, intent/capability scoring |
+| Threat Model | `/threat-model` | Threat Model with options to add/remove actors from monitoring, change quarter, modify Intent and Capability for each actor |
 | Risk Calculation | `/risk-calculation` | Per-technique risk scores |
 | Impact Table | `/impact-table` | CIA impact matrix |
 | High Value Assets | `/high-value-assets` | HVA matrix |
@@ -183,6 +184,8 @@ BASE_PATH=/purple-team/ pnpm --filter @workspace/purple-team-dashboard run build
 | Risk Rate | `/risk-rate` | Risk rate heatmap |
 | All Procedures | `/all-procedures` | Full searchable/filterable procedure table |
 | Data Sources | `/data-sources` | Upload external data and sync CrowdStrike |
+| API | `api-docs` | Every section of the Purple Team dashboard is queryable as JSON or CSV. All endpoints are read-only and require no authentication |
+| Users | `users` | Create username and password accounts with write access to the dashboard | 
 
 ---
 
