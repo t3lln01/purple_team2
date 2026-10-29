@@ -92,7 +92,7 @@ type ComputedRow = ImpactRow & {
 
 export default function ImpactTable() {
   const { overrides, setOverride, resetOverride, resetAll } = useImpactOverrides();
-  const { overrides: tacticOverrides } = useTacticScores();
+  const { overrides: tacticOverrides, areTacticsEnabled, isTidEnabled } = useTacticScores();
   const { hvaScoreMap } = useHVAScores();
   const { activeNewImpactRows } = useAppData();
   const { tidsInWindow } = useDateWindow();
@@ -109,8 +109,9 @@ export default function ImpactTable() {
   }, []);
 
   const allSourceRows = useMemo(
-    () => [...(rawRows as ImpactRow[]), ...(activeNewImpactRows as ImpactRow[])],
-    [activeNewImpactRows]
+    () => [...(rawRows as ImpactRow[]), ...(activeNewImpactRows as ImpactRow[])]
+      .filter(row => isTidEnabled(row.id) && areTacticsEnabled(stixOverrides[row.id]?.tactics ?? row.tactics)),
+    [activeNewImpactRows, areTacticsEnabled, isTidEnabled, stixOverrides]
   );
 
   const allTactics = useMemo(
@@ -220,8 +221,8 @@ export default function ImpactTable() {
 
   const overrideCount = Object.keys(overrides).length;
   const vhCount = computed.filter(r => r._impactRate === "Very High").length;
-  const avgImpact = computed.reduce((s, r) => s + r._impactScore, 0) / computed.length;
-  const maxImpact = Math.max(...computed.map(r => r._impactScore));
+  const avgImpact = computed.reduce((s, r) => s + r._impactScore, 0) / (computed.length || 1);
+  const maxImpact = Math.max(...computed.map(r => r._impactScore), 0);
 
   return (
     <div className="p-6 space-y-6">

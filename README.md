@@ -1,6 +1,6 @@
 # BOX Treat Intel Web App
 
-A dark-themed React dashboard for visualising Adversary prioritisation, Mitre Att&ck TTPs prioritisation and Threat Model data mapped to the MITRE ATT&CK framework. Backed by a lightweight Node.js API server that handles CrowdStrike Intel API syncing.
+A dark-themed React dashboard for visualising adversary prioritisation, MITRE ATT&CK TTP prioritisation, and Threat Model data. It is backed by a Python FastAPI service that handles PostgreSQL persistence, exports, and CrowdStrike Intel API syncing.
 
 ---
 
@@ -10,6 +10,8 @@ A dark-themed React dashboard for visualising Adversary prioritisation, Mitre At
 |------|----------------|
 | Node.js | 18+ (tested on v24) |
 | pnpm | 9+ |
+| Python | 3.13+ |
+| PostgreSQL | 16+ |
 
 Install pnpm if you don't have it:
 
@@ -29,7 +31,10 @@ cd threatintel/
 # 2. Install all workspace dependencies
 pnpm install
 
-# 3. Start both the API server and dashboard together
+# 3. Install the Python backend dependencies
+python3 -m pip install -r artifacts/api-server/requirements.txt
+
+# 4. Set DATABASE_URL, then start both services
 pnpm run dev
 ```
 
@@ -64,7 +69,7 @@ CS_CLIENT_SECRET=your_client_secret
 3. Enter your Client ID and Client Secret
 4. Click **Save & Connect**
 
-Credentials entered via the UI are saved to `artifacts/api-server/cs-credentials.json` on disk and are excluded from git. Environment variables always take precedence over UI-saved credentials.
+Credentials entered via the UI are saved in PostgreSQL. Environment variables always take precedence over UI-saved credentials.
 
 To create a CrowdStrike API client: **Falcon Console → API Clients & Keys** — create a client with **Intel** read scope.
 
@@ -86,10 +91,11 @@ The sync never replaces your actor list. The 34 prioritised actors (with their i
 
 | Variable | Service | Default | Description |
 |----------|---------|---------|-------------|
-| `PORT` | API server | `8080` | Port the Express server listens on |
+| `API_SERVER_PORT` | API server | `8080` | Port the FastAPI server listens on |
 | `PORT` | Dashboard | `5173` | Port Vite dev server listens on |
 | `API_SERVER_PORT` | Dashboard | `8080` | Port the Vite proxy forwards `/api` requests to |
 | `BASE_PATH` | Dashboard | `/` | URL base path (for subdirectory deployments) |
+| `DATABASE_URL` | API server | — | PostgreSQL connection string |
 | `CS_CLIENT_ID` | API server | — | CrowdStrike Falcon API client ID |
 | `CS_CLIENT_SECRET` | API server | — | CrowdStrike Falcon API client secret |
 
@@ -97,7 +103,7 @@ To run on custom ports:
 
 ```bash
 # Start API server on port 9000
-PORT=9000 pnpm --filter @workspace/api-server run dev
+API_SERVER_PORT=9000 pnpm run dev:api
 
 # Start dashboard pointing at port 9000
 API_SERVER_PORT=9000 pnpm --filter @workspace/purple-team-dashboard run dev
@@ -119,9 +125,8 @@ API_SERVER_PORT=8080
 pnpm --filter @workspace/purple-team-dashboard run build
 # Output: artifacts/purple-team-dashboard/dist/public/
 
-# Build the API server
-pnpm --filter @workspace/api-server run build
-# Output: artifacts/api-server/dist/
+# Install the API server's production dependencies
+python3 -m pip install -r artifacts/api-server/requirements.txt
 
 # Serve the dashboard build locally
 pnpm --filter @workspace/purple-team-dashboard run serve
@@ -142,14 +147,13 @@ BASE_PATH=/purple-team/ pnpm --filter @workspace/purple-team-dashboard run build
 ```
 /
 ├── artifacts/
-│   ├── api-server/                    # Express API server
-│   │   ├── src/
-│   │   │   ├── index.ts               # Entry point (PORT defaults to 8080)
-│   │   │   ├── app.ts                 # Express app + middleware
-│   │   │   └── routes/
-│   │   │       └── crowdstrike.ts     # CS Intel API sync + credential routes
-│   │   ├── cs-sync-state.json         # Persisted sync state (reports + actor MITRE data)
-│   │   └── cs-credentials.json        # UI-saved credentials (gitignored)
+│   ├── api-server/                    # Python FastAPI server
+│   │   ├── app/
+│   │   │   ├── main.py                # Entry point and middleware
+│   │   │   ├── crowdstrike.py         # CS Intel sync + threat-model routes
+│   │   │   ├── exports.py             # Dashboard export API
+│   │   │   └── storage.py             # PostgreSQL persistence and legacy JSON import
+│   │   ├── requirements.txt
 │   │
 │   └── purple-team-dashboard/         # React + Vite dashboard
 │       ├── src/
@@ -164,9 +168,18 @@ BASE_PATH=/purple-team/ pnpm --filter @workspace/purple-team-dashboard run build
 │       │       ├── AllProcedures.tsx
 │       │       └── DataSources.tsx
 │       └── vite.config.ts             # Proxies /api → API server
+├── export/
+│   ├── intel/                         # Static /intel section for saved_searches
+│   └── intel-manifest.json            # Maps export files and snapshot JSON onto the catalog
 ├── package.json                       # Workspace root — `pnpm run dev` starts everything
 └── pnpm-workspace.yaml
 ```
+
+## Catalog export
+
+`export/intel/` is the static section the detection catalog serves at `/intel`. `export/intel-manifest.json` also points at `artifacts/purple-team-dashboard/src/data.json` and `threatModelData.json`.
+
+This repo tracks `git.dev.box.net/sfiliaggi/threatintel`. From saved_searches, `python3 bin/build_80_intel.py` copies that export into `catalog/intel/` and `catalog/data/`. Point the script at a local checkout with `PURPLE_TEAM_REPO` when you are not fetching the remote.
 
 ---
 
@@ -180,12 +193,11 @@ BASE_PATH=/purple-team/ pnpm --filter @workspace/purple-team-dashboard run build
 | Impact Table | `/impact-table` | CIA impact matrix |
 | High Value Assets | `/high-value-assets` | HVA matrix |
 | TID Priority | `/tid-priority` | Threat intelligence directive scoring |
-| Tactic Scores | `/tactics-scores` | MITRE tactic-level coverage breakdown |
+| Tactic Scores | `/tactics-scores` | MITRE tactic-level scores and persistent enable/disable controls that filter TIDs and calculations app-wide |
 | Risk Rate | `/risk-rate` | Risk rate heatmap |
 | All Procedures | `/all-procedures` | Full searchable/filterable procedure table |
 | Data Sources | `/data-sources` | Upload external data and sync CrowdStrike |
 | API | `api-docs` | Every section of the Purple Team dashboard is queryable as JSON or CSV. All endpoints are read-only and require no authentication |
-| Users | `users` | Create username and password accounts with write access to the dashboard | 
 
 ---
 
@@ -248,7 +260,13 @@ A procedure entry is included only when **all** of the following are true:
 
 ---
 
-## localStorage keys
+## Durable application state
+
+PostgreSQL is the source of truth for browser application state, quarterly threat-model snapshots, CrowdStrike sync results, and UI-saved CrowdStrike credentials. Browser `localStorage` is a cache: it is hydrated from `/api/state` before React starts, and tracked changes are written back automatically.
+
+On the first successful startup after upgrading, existing browser-only state and legacy CrowdStrike JSON files are imported automatically. Keep `DATABASE_URL` pointed at durable PostgreSQL storage; changing or deleting that database loses shared application state. Because the API has no login, deploy it only on a trusted private network or behind an access-control proxy.
+
+Tracked browser keys include:
 
 | Key | Contents |
 |-----|----------|
@@ -258,6 +276,7 @@ A procedure entry is included only when **all** of the following are true:
 | `pt_procedures_custom` | Manually added procedures |
 | `pt_mitre_versions_meta` | Loaded MITRE ATT&CK version metadata |
 | `pt_active_mitre_version` | Currently selected MITRE version ID |
+| `pt_disabled_tactics` | Tactics disabled globally; their TIDs are excluded from views and calculations |
 | `ds_actormap_files` | Uploaded actor mapping files (persisted for re-use) |
 | `ds_reports_lookup` | Parsed reports lookup (keyed by uppercased report ID) |
 | `ds_reports_stats` | Reports summary stats for the UI panel |
@@ -275,7 +294,8 @@ A procedure entry is included only when **all** of the following are true:
 | Routing | Wouter |
 | Charts | Recharts |
 | Icons | Lucide React |
-| API server | Express + tsx |
+| API server | Python 3.13 + FastAPI + Uvicorn |
+| Database | PostgreSQL + psycopg |
 | Package manager | pnpm (workspace monorepo) |
 
 ---
@@ -287,14 +307,14 @@ A procedure entry is included only when **all** of the following are true:
 The dashboard can't reach the API server. Make sure it's running:
 
 ```bash
-pnpm --filter @workspace/api-server run dev
+pnpm run dev:api
 ```
 
 Or use `pnpm run dev` from the repo root to start both together.
 
 **CrowdStrike sync returns 0 reports**
 
-This is normal on incremental syncs when no new reports have been published since the last run. Previously synced reports are preserved in `cs-sync-state.json` and remain available via **Load sync result into dashboard**.
+This is normal on incremental syncs when no new reports have been published since the last run. Previously synced reports are preserved in PostgreSQL and remain available via **Load sync result into dashboard**.
 
 **Procedures not appearing after sync**
 
@@ -304,11 +324,12 @@ All three extraction rules must be satisfied: non-empty observables, a matched r
 
 The raw GitHub file is ~75 MB. Download it manually from the link shown on the error panel and upload it via the file picker.
 
-**Node.js version**
+**Runtime versions**
 
 ```bash
 node --version   # needs to be v18 or higher
 pnpm --version   # needs to be v9 or higher
+python3 --version # needs to be v3.13 or higher
 ```
 
 Install the latest Node.js LTS via [nvm](https://github.com/nvm-sh/nvm):

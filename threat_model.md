@@ -2,44 +2,41 @@
 
 ## Project Overview
 
-A publicly deployed Purple Team adversary-prioritization dashboard. A React/Vite client calls an Express 5 API that stores threat-model snapshots in local JSON files and integrates with CrowdStrike using server-held OAuth credentials. Clerk establishes identities; an administrator can create writer accounts, while writers can modify shared threat-model and CrowdStrike configuration/state.
+A Purple Team adversary-prioritization dashboard. A React/Vite client calls a Python FastAPI service that stores threat-model snapshots in PostgreSQL and integrates with CrowdStrike using server-held OAuth credentials. The application has no login or application-level authorization and must therefore be restricted at the network or deployment edge.
 
 ## Assets
 
 - **CrowdStrike credentials and licensed intelligence** — OAuth client credentials, reports, raw actor records, MITRE mappings, and live actor metadata.
 - **Threat-model business data** — quarterly actor assessments, monitoring decisions, overrides, evidence, high-value assets, and risk scores.
-- **User accounts and privileges** — Clerk sessions, administrator identity, and writer-role metadata.
-- **Service availability and third-party quota** — API capacity, local persistent files, and CrowdStrike request quota.
+- **Service availability and third-party quota** — API and PostgreSQL capacity, durable application state, and CrowdStrike request quota.
 
 ## Trust Boundaries
 
-- **Public browser to Express API** — all request input is attacker-controlled; public deployment means route authorization must be server-side.
-- **Clerk identity to application roles** — Clerk proves identity, but the API must separately enforce administrator/writer/read permissions.
-- **API to local JSON state** — shared mutable files contain production threat intelligence and assessments.
+- **Browser to FastAPI service** — all callers can read and modify application state because there is no application-level authorization.
+- **API to PostgreSQL** — shared browser state, CrowdStrike credentials and results, and quarterly assessments are stored in one durable database.
 - **API to CrowdStrike** — server-held credentials authorize paid/sensitive upstream queries; public callers must not be able to use them as an oracle.
 - **Uploaded/external intelligence to browser rendering** — CrowdStrike responses, STIX/JSON/CSV uploads, and persisted overrides are untrusted display data.
 
 ## Scan Anchors
 
-- Entry/setup: `artifacts/api-server/src/app.ts`, `src/routes/index.ts`.
-- Authz: `src/middlewares/adminAuthorization.ts`, `src/routes/access.ts`.
-- Highest risk: `src/routes/crowdstrike.ts`, `src/routes/export.ts`, and dashboard upload/render paths.
-- Public/static export endpoints are intentionally documented as unauthenticated, but raw synced intelligence and mutable internal assessments require separate review.
+- Entry/setup: `artifacts/api-server/app/main.py`.
+- Highest risk: `app/crowdstrike.py`, `app/exports.py`, and dashboard upload/render paths.
+- All API endpoints are unauthenticated, including raw synchronized intelligence and mutable internal assessments.
 - `artifacts/mockup-sandbox` is development-only unless production reachability is demonstrated.
 
 ## Threat Categories
 
 ### Spoofing and Elevation of Privilege
-Every privileged API operation must derive a valid Clerk subject and enforce the exact administrator or writer role. HTTP method alone is not an authorization boundary, and privileged reads must not inherit public access accidentally.
+There are no application identities or privilege levels. Access control must be supplied by a private network, identity-aware proxy, or equivalent deployment-edge restriction.
 
 ### Tampering
-Only authorized writers may change credentials or threat-model state, and only the administrator may manage users. Shared state payloads require bounded structural validation so one writer cannot corrupt service-wide storage or inject dangerous content.
+Any caller can change credentials or threat-model state. The generic state API accepts only application-key prefixes and bounded request bodies, but does not authorize callers; the service must not be exposed to untrusted networks.
 
 ### Information Disclosure
-Raw CrowdStrike sync results, actor records, quarterly assessments, monitoring state, and other internal intelligence must be returned only to authorized users unless explicitly classified for public release. Errors must not relay secret-bearing upstream details.
+Raw CrowdStrike sync results, actor records, quarterly assessments, monitoring state, and other internal intelligence are available to every caller. Network-level access restrictions are required unless that data is explicitly classified for public release.
 
 ### Denial of Service
-Unauthenticated users must not trigger CrowdStrike-backed enumeration, large file reads, or unbounded response buffering. Request and stored-state sizes need limits appropriate to API quota and deployment resources.
+Unauthenticated users must not trigger CrowdStrike-backed enumeration or unbounded response buffering. Request and stored-state sizes need limits appropriate to API quota, PostgreSQL capacity, and deployment resources.
 
 ### Injection
-Uploaded, persisted, and upstream strings must be rendered as text rather than HTML. Filesystem paths and outbound hosts must remain server-controlled; database operations must remain parameterized if introduced.
+Uploaded, persisted, and upstream strings must be rendered as text rather than HTML. Filesystem paths and outbound hosts must remain server-controlled, and database operations must remain parameterized.

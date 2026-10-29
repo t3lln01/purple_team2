@@ -5,6 +5,7 @@ import { useAppData } from "@/context/AppDataContext";
 import { Plus, Pencil, Trash2, Check, X, RotateCcw, Info } from "lucide-react";
 import { useSortTable } from "@/hooks/useSortTable";
 import { useHVAScores } from "@/context/HVAScoresContext";
+import { useTacticScores } from "@/context/TacticScoresContext";
 import SortableTh from "@/components/SortableTh";
 
 type HVRow = {
@@ -102,6 +103,7 @@ function blankForm(): HVRow {
 
 export default function HighValueAssets() {
   const { setHVAScores } = useHVAScores();
+  const { isTidEnabled } = useTacticScores();
   const { activeMitreVersionId } = useAppData();
   const versionKey    = activeMitreVersionId ?? "base";
   const lsCustomKey   = `${LS_CUSTOM_BASE}:${versionKey}`;
@@ -150,8 +152,8 @@ export default function HighValueAssets() {
       _isCustom: true,
       _isEdited: false,
     }));
-    return [...baseline, ...cust];
-  }, [custom, overrides]);
+    return [...baseline, ...cust].filter(row => isTidEnabled(row.tid));
+  }, [custom, overrides, isTidEnabled]);
 
   // Keep HVScores in sync — recompute locally and push to shared context so
   // Risk Calculation and Likelihood Table react immediately.
@@ -205,7 +207,7 @@ export default function HighValueAssets() {
   }
 
   function commitAdd() {
-    if (!addForm.target || !addForm.tid) return;
+    if (!addForm.target || !addForm.tid || !isTidEnabled(addForm.tid)) return;
     const newEntry: HVRow = {
       ...addForm,
       riskScore:       Number(addForm.riskScore)       || calcRiskScore(addForm.risk),
@@ -267,6 +269,7 @@ export default function HighValueAssets() {
 
   function commitEdit() {
     if (!editId) return;
+    if (editForm.tid && !isTidEnabled(editForm.tid)) return;
     if (editId.startsWith("c-")) {
       const idx = parseInt(editId.slice(2));
       const next = custom.map((r, i) => i === idx ? { ...r, ...editForm } as HVRow : r);
@@ -519,11 +522,14 @@ export default function HighValueAssets() {
             <div className="flex items-center gap-2 pt-1">
               <button
                 onClick={commitAdd}
-                disabled={!addForm.target || !addForm.tid}
+                disabled={!addForm.target || !addForm.tid || !isTidEnabled(addForm.tid)}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 <Check className="w-3.5 h-3.5" /> Save Row
               </button>
+              {addForm.tid && !isTidEnabled(addForm.tid) && (
+                <span className="text-xs text-amber-400">This TID belongs to a disabled tactic.</span>
+              )}
               <button
                 onClick={() => setShowAdd(false)}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-border rounded-lg hover:bg-accent/20 transition-colors text-muted-foreground"
@@ -631,7 +637,12 @@ export default function HighValueAssets() {
                         </td>
                         <td className="px-2 py-1.5">
                           <div className="flex items-center gap-1">
-                            <button onClick={commitEdit} className="p-1 text-green-400 hover:bg-green-400/10 rounded" title="Save">
+                            <button
+                              onClick={commitEdit}
+                              disabled={Boolean(editForm.tid && !isTidEnabled(editForm.tid))}
+                              className="p-1 text-green-400 hover:bg-green-400/10 rounded disabled:cursor-not-allowed disabled:opacity-40"
+                              title={editForm.tid && !isTidEnabled(editForm.tid) ? "This TID belongs to a disabled tactic" : "Save"}
+                            >
                               <Check className="w-3.5 h-3.5" />
                             </button>
                             <button onClick={cancelEdit} className="p-1 text-muted-foreground hover:bg-accent/20 rounded" title="Cancel">

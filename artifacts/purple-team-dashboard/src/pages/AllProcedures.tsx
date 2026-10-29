@@ -291,6 +291,7 @@ function ActorMultiSelect({ selected, onChange, allActors }: {
 function MitreMultiSelect({ selected, onChange }: {
   selected: Set<string>; onChange: (next: Set<string>) => void;
 }) {
+  const { isTacticEnabled, isTidEnabled } = useTacticScores();
   const [open, setOpen] = useState(false);
   const [tacticFilter, setTacticFilter] = useState("");
   const [idSearch, setIdSearch] = useState("");
@@ -304,7 +305,12 @@ function MitreMultiSelect({ selected, onChange }: {
     return () => document.removeEventListener("mousedown", onOut);
   }, []);
 
-  const tacticIds = useMemo(() => mitreIdsForTactic(tacticFilter), [tacticFilter]);
+  const enabledMitreIds = useMemo(() => allMitreIds.filter(isTidEnabled), [isTidEnabled]);
+  const enabledTactics = useMemo(() => allTactics.filter(isTacticEnabled), [isTacticEnabled]);
+  const tacticIds = useMemo(
+    () => new Set(enabledMitreIds.filter(id => !tacticFilter || (techTacticMap[id] ?? []).includes(tacticFilter))),
+    [enabledMitreIds, tacticFilter],
+  );
   const visible = useMemo(() => {
     let ids = [...tacticIds];
     if (idSearch) ids = ids.filter(id => id.toLowerCase().includes(idSearch.toLowerCase()));
@@ -341,8 +347,8 @@ function MitreMultiSelect({ selected, onChange }: {
           <div className="p-2 border-b border-border space-y-2">
             <select value={tacticFilter} onChange={e => setTacticFilter(e.target.value)}
               className="w-full bg-input border border-border rounded-lg px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
-              <option value="">All tactics ({allMitreIds.length} IDs)</option>
-              {allTactics.map(t => <option key={t} value={t}>{t} ({[...mitreIdsForTactic(t)].length} IDs)</option>)}
+              <option value="">All tactics ({enabledMitreIds.length} IDs)</option>
+              {enabledTactics.map(t => <option key={t} value={t}>{t} ({enabledMitreIds.filter(id => (techTacticMap[id] ?? []).includes(t)).length} IDs)</option>)}
             </select>
             <input type="search" autoFocus placeholder="Search technique ID…" value={idSearch} onChange={e => setIdSearch(e.target.value)}
               className="w-full bg-input border border-border rounded-lg px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
@@ -546,6 +552,7 @@ function AddForm({ allActors, onSave, onCancel }: {
   onSave: (p: Procedure) => void;
   onCancel: () => void;
 }) {
+  const { isTidEnabled } = useTacticScores();
   const [form, setForm] = useState(BLANK_FORM);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -553,6 +560,7 @@ function AddForm({ allActors, onSave, onCancel }: {
     const errs: Record<string, string> = {};
     if (!form.actor.trim())   errs.actor   = "Required";
     if (!form.mitreId.trim()) errs.mitreId = "Required";
+    else if (!isTidEnabled(form.mitreId.trim().toUpperCase())) errs.mitreId = "This TID belongs to a disabled tactic";
     return errs;
   }
 
@@ -595,7 +603,7 @@ function AddForm({ allActors, onSave, onCancel }: {
       <td className="px-2 py-3">
         <div>
           <input list="mitre-list" placeholder="T1190" {...f("mitreId")} className={inputCls(errors.mitreId)} />
-          <datalist id="mitre-list">{allMitreIds.map(id => <option key={id} value={id} />)}</datalist>
+          <datalist id="mitre-list">{allMitreIds.filter(isTidEnabled).map(id => <option key={id} value={id} />)}</datalist>
           {errors.mitreId && <p className="text-[10px] text-red-400 mt-0.5">{errors.mitreId}</p>}
         </div>
       </td>
@@ -626,7 +634,7 @@ function AddForm({ allActors, onSave, onCancel }: {
 export default function AllProcedures() {
   const search = useSearch();
   const { liveActorData, clearLiveActorData } = useAppData();
-  const { overrides: tacticOverrides }     = useTacticScores();
+  const { overrides: tacticOverrides, isTidEnabled } = useTacticScores();
   const { overrides: likelihoodOverrides } = useLikelihood();
   const { overrides: impactOverrides }     = useImpactOverrides();
   const { hvaScoreMap }                    = useHVAScores();
@@ -636,13 +644,13 @@ export default function AllProcedures() {
   // any TID shows the same risk score across all pages after CIA/HVA overrides.
   const riskScoreMap = useMemo(() => {
     const computed = applyOverrides(
-      baseFullRiskCalc as any[],
+      (baseFullRiskCalc as any[]).filter(row => isTidEnabled(row.TID)),
       tacticOverrides, likelihoodOverrides, impactOverrides, hvaScoreMap
     );
     const map: Record<string, number> = {};
     for (const r of computed) map[r.TID] = r["Risk Scores"] ?? 0;
     return map;
-  }, [tacticOverrides, likelihoodOverrides, impactOverrides, hvaScoreMap]);
+  }, [tacticOverrides, likelihoodOverrides, impactOverrides, hvaScoreMap, isTidEnabled]);
 
   const [customProcs, setCustomProcs] = useState<Procedure[]>(loadCustom);
 
@@ -665,8 +673,8 @@ export default function AllProcedures() {
 
   // All procedures: base data.json + manually added custom + live CrowdStrike procedures
   const allProcedures = useMemo(
-    () => [...baseProcedures, ...customProcs, ...liveProcs],
-    [customProcs, liveProcs]
+    () => [...baseProcedures, ...customProcs, ...liveProcs].filter(procedure => isTidEnabled(procedure.mitreId)),
+    [customProcs, liveProcs, isTidEnabled]
   );
 
   const allActors = useMemo(() => Array.from(
@@ -698,9 +706,9 @@ export default function AllProcedures() {
   const [selectedMitreIds, setSelectedMitreIds] = useState<Set<string>>(() => {
     const params = new URLSearchParams(search);
     const mitre = params.get("mitre") ?? "";
-    if (mitre && allMitreIds.includes(mitre)) return new Set([mitre]);
+    if (mitre && allMitreIds.includes(mitre) && isTidEnabled(mitre)) return new Set([mitre]);
     const tactic = params.get("tactic") ?? "";
-    if (tactic) return mitreIdsForTactic(tactic);
+    if (tactic) return new Set([...mitreIdsForTactic(tactic)].filter(isTidEnabled));
     return new Set();
   });
 
@@ -733,11 +741,11 @@ export default function AllProcedures() {
     setSelectedActors(actor ? new Set([actor]) : new Set());
     const mitre = params.get("mitre") ?? "";
     const tactic = params.get("tactic") ?? "";
-    if (mitre && allMitreIds.includes(mitre)) setSelectedMitreIds(new Set([mitre]));
-    else if (tactic) setSelectedMitreIds(mitreIdsForTactic(tactic));
+    if (mitre && allMitreIds.includes(mitre) && isTidEnabled(mitre)) setSelectedMitreIds(new Set([mitre]));
+    else if (tactic) setSelectedMitreIds(new Set([...mitreIdsForTactic(tactic)].filter(isTidEnabled)));
     else setSelectedMitreIds(new Set());
     setPage(1);
-  }, [search]);
+  }, [search, isTidEnabled]);
 
   function addCustom(p: Procedure) {
     const next = [...customProcs, p];

@@ -5,6 +5,7 @@ import { useSortTable } from "@/hooks/useSortTable";
 import SortableTh from "@/components/SortableTh";
 import AssessmentReviewPanel from "@/components/AssessmentReviewPanel";
 import { useAppData } from "@/context/AppDataContext";
+import { useTacticScores } from "@/context/TacticScoresContext";
 import { generateQuarterlyAssessments, sourceQuarterForAssessment, type AutoAssessment, type ScoringContext } from "@/utils/quarterlyAutoScoring";
 import { useThreatModelQuarter } from "@/context/ThreatModelQuarterContext";
 import {
@@ -1409,11 +1410,19 @@ type TabId = "actors" | "pptap" | "sirt";
 
 export default function ThreatModel() {
   const { liveActorData } = useAppData();
+  const { isTidEnabled } = useTacticScores();
   const procedureSource = useMemo(() => {
-    if (liveActorData?.procedures?.length) return liveActorData;
+    if (liveActorData?.procedures?.length) {
+      return {
+        ...liveActorData,
+        procedures: liveActorData.procedures.filter(procedure => isTidEnabled(procedure.mitreId)),
+      };
+    }
     const source = dashboardData as any;
     return {
-      procedures: (source.allProcedures ?? []).map((procedure: any) => ({
+      procedures: (source.allProcedures ?? [])
+        .filter((procedure: any) => isTidEnabled(String(procedure.mitreId ?? "")))
+        .map((procedure: any) => ({
         actor: String(procedure.actor ?? ""),
         mitreId: String(procedure.mitreId ?? ""),
         tacticName: (source.techTacticMap?.[procedure.mitreId] ?? []).join(", "),
@@ -1428,7 +1437,7 @@ export default function ThreatModel() {
       label: "Bundled procedure dataset",
       loadedAt: new Date(0).toISOString(),
     };
-  }, [liveActorData]);
+  }, [liveActorData, isTidEnabled]);
   // Quarter versioning
   const { selectedQuarter, setSelectedQuarter } = useThreatModelQuarter();
   const [savedVersions, setSavedVersions]     = useState<Array<{

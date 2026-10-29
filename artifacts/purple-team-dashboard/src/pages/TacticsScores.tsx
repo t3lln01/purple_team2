@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { Link } from "wouter";
 import { Pencil, Check, X, RotateCcw } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { CONF_SCORES, INT_SCORES, AVAIL_SCORES } from "@/utils/impactFormulas";
 import {
   useTacticScores,
@@ -88,15 +89,21 @@ function RatingSelect({
 function TacticCard({
   tactic,
   isEdited,
+  enabled,
+  canDisable,
   maxConf, maxInt, maxAvail, maxExtent, maxCIA,
   onSave,
   onReset,
+  onEnabledChange,
 }: {
   tactic: Tactic;
   isEdited: boolean;
+  enabled: boolean;
+  canDisable: boolean;
   maxConf: number; maxInt: number; maxAvail: number; maxExtent: number; maxCIA: number;
   onSave: (field: TacticField, value: string | number) => void;
   onReset: () => void;
+  onEnabledChange: (enabled: boolean) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Tactic>(tactic);
@@ -130,7 +137,9 @@ function TacticCard({
                        : { c, i, a, total, ext: Number(tactic.extent) };
 
   return (
-    <div className="bg-card border border-card-border rounded-xl overflow-hidden">
+    <div className={`bg-card border rounded-xl overflow-hidden transition-opacity ${
+      enabled ? "border-card-border" : "border-muted opacity-60"
+    }`}>
       <div className={`h-1 ${color}`} />
       <div className="p-4">
         {/* header row */}
@@ -155,6 +164,15 @@ function TacticCard({
 
           {/* action buttons */}
           <div className="flex-shrink-0 ml-3 flex items-center gap-1">
+            <label className="mr-2 flex items-center gap-2 text-xs text-muted-foreground">
+              <Switch
+                checked={enabled}
+                onCheckedChange={onEnabledChange}
+                disabled={enabled && !canDisable}
+                aria-label={`${enabled ? "Disable" : "Enable"} ${tactic.tactic}`}
+              />
+              {enabled ? "Enabled" : "Disabled"}
+            </label>
             {editing ? (
               <>
                 <button onClick={save} title="Save" className="p-1 rounded hover:bg-green-500/10 text-green-400 hover:text-green-300 transition-colors">
@@ -268,7 +286,16 @@ function TacticCard({
 
 // ── page ──────────────────────────────────────────────────────────────────────
 export default function TacticsScores() {
-  const { liveTactics, overrides, setOverride, resetOverride, resetAll } = useTacticScores();
+  const {
+    liveTactics,
+    overrides,
+    disabledTactics,
+    setOverride,
+    resetOverride,
+    resetAll,
+    setTacticEnabled,
+    enableAllTactics,
+  } = useTacticScores();
 
   const editedCount = Object.keys(overrides).length;
 
@@ -283,23 +310,33 @@ export default function TacticsScores() {
   return (
     <div className="p-6 space-y-6">
       {/* header */}
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Tactic Default Scores</h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Baseline CIA and extent scores per MITRE ATT&CK tactic. Edits propagate to Impact Table and Risk Calculation.
+            Baseline CIA and extent scores per MITRE ATT&CK tactic. Disabled tactics and their TIDs are excluded throughout the app and from calculations.
             <br />CIA Total = C + I + A using formula weights (Conf: L=1/M=2/H=3 · Int: L=1/M=2.25/H=3.5 · Avail: L=1/M=2.5/H=4).
           </p>
+          <p className="mt-2 text-xs font-medium text-primary">
+            {liveTactics.length - disabledTactics.size} of {liveTactics.length} tactics enabled
+          </p>
         </div>
-        {editedCount > 0 && (
-          <button
-            onClick={resetAll}
-            className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-orange-400 hover:border-orange-400/40 transition-colors"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            Reset all ({editedCount})
-          </button>
-        )}
+        <div className="flex flex-wrap justify-end gap-2">
+          {disabledTactics.size > 0 && (
+            <button onClick={enableAllTactics} className="text-sm px-3 py-1.5 rounded-lg border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 transition-colors">
+              Enable all
+            </button>
+          )}
+          {editedCount > 0 && (
+            <button
+              onClick={resetAll}
+              className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-orange-400 hover:border-orange-400/40 transition-colors"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              Reset scores ({editedCount})
+            </button>
+          )}
+        </div>
       </div>
 
       {/* weight reference legend */}
@@ -331,6 +368,8 @@ export default function TacticsScores() {
               key={tactic.tactic}
               tactic={tactic}
               isEdited={isEdited}
+              enabled={!disabledTactics.has(tactic.tactic)}
+              canDisable={liveTactics.length - disabledTactics.size > 1}
               maxConf={maxConf}
               maxInt={maxInt}
               maxAvail={maxAvail}
@@ -338,6 +377,7 @@ export default function TacticsScores() {
               maxCIA={maxCIA}
               onSave={(field, value) => setOverride(tactic.tactic, field, value)}
               onReset={() => resetOverride(tactic.tactic)}
+              onEnabledChange={enabled => setTacticEnabled(tactic.tactic, enabled)}
             />
           );
         })}
@@ -361,6 +401,7 @@ export default function TacticsScores() {
             <thead>
               <tr className="border-b border-border bg-muted/20">
                 <th className="text-left px-4 py-2.5 text-xs text-muted-foreground font-medium">Tactic</th>
+                <th className="text-center px-4 py-2.5 text-xs text-muted-foreground font-medium">Status</th>
                 <th className="text-center px-4 py-2.5 text-xs text-muted-foreground font-medium">Rating</th>
                 <th className="text-right px-4 py-2.5 text-xs text-blue-400 font-medium">Conf.</th>
                 <th className="text-center px-4 py-2.5 text-xs text-muted-foreground font-medium">Rating</th>
@@ -379,8 +420,9 @@ export default function TacticsScores() {
                 const a = availScore(tactic.avail);
                 const total = c + i + a;
                 const isEdited = overrides[tactic.tactic] !== undefined;
+                const enabled = !disabledTactics.has(tactic.tactic);
                 return (
-                  <tr key={tactic.tactic} className={`border-b border-border/40 hover:bg-accent/20 transition-colors ${isEdited ? "bg-primary/5" : ""}`}>
+                  <tr key={tactic.tactic} className={`border-b border-border/40 hover:bg-accent/20 transition-colors ${isEdited ? "bg-primary/5" : ""} ${enabled ? "" : "opacity-55"}`}>
                     <td className="px-4 py-3">
                       <Link href={`/all-procedures?tactic=${encodeURIComponent(tactic.tactic)}`}>
                         <div className="flex items-center gap-2 group cursor-pointer">
@@ -393,6 +435,15 @@ export default function TacticsScores() {
                           )}
                         </div>
                       </Link>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className={`text-[10px] rounded-full border px-2 py-0.5 font-semibold ${
+                        enabled
+                          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+                          : "border-muted bg-muted/30 text-muted-foreground"
+                      }`}>
+                        {enabled ? "Enabled" : "Disabled"}
+                      </span>
                     </td>
                     <td className="px-4 py-3 text-center"><RatingBadge label={tactic.conf} /></td>
                     <td className="px-4 py-3 text-right text-xs text-blue-400 font-semibold font-mono">{c.toFixed(2)}</td>

@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Detection Catalog - Intel</title>
+    <link rel="icon" type="image/png" href="../img/favicon.png">
+    <link rel="stylesheet" href="intel.css">
+</head>
+<body>
+    <div class="container">
+        <nav class="navbar">
+            <div class="nav-container">
+                <ul class="nav-links">
+                    <li><a href="../services.html">Services</a></li>
+                    <li><a href="../products.html">Products</a></li>
+                    <li><a href="../detections.html">Detections</a></li>
+                    <li class="nav-dropdown">
+                        <button type="button" class="nav-dropdown-toggle" aria-haspopup="true">MITRE</button>
+                        <ul class="nav-dropdown-menu" role="menu">
+                            <li role="none"><a role="menuitem" href="../mitre-attack.html">MITRE ATT&CK</a></li>
+                            <li role="none"><a role="menuitem" href="../mitre-atlas.html">MITRE ATLAS</a></li>
+                        </ul>
+                    </li>
+                    <li><a href="../helix.html">Helix</a></li>
+                    <li><a href="../metrics.html">Metrics</a></li>
+                    <li><a href="../graph.html">Graph</a></li>
+                    <li><a href="./" class="active">Intel</a></li>
+                </ul>
+            </div>
+        </nav>
+        <nav class="subnav" id="subnav" aria-label="Intel views"></nav>
+        <div class="page">
+            <div id="view"><p class="status">Loading intel snapshot…</p></div>
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <script src="intel.js"></script>
+</body>
+</html>

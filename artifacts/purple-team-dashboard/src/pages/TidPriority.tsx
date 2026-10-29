@@ -5,6 +5,7 @@ import { useSortTable } from "@/hooks/useSortTable";
 import SortableTh from "@/components/SortableTh";
 import { useAppData } from "@/context/AppDataContext";
 import { dateValToStr, lastOccToCategory } from "@/utils/impactFormulas";
+import { useTacticScores } from "@/context/TacticScoresContext";
 
 type TIDRow = {
   tid: string;
@@ -25,23 +26,29 @@ function riskBand(risk: number) {
 export default function TidPriority() {
   const [search, setSearch] = useState("");
   const { liveActorData } = useAppData();
+  const { isTidEnabled } = useTacticScores();
+  const enabledRows = useMemo(
+    () => tidPriority.filter(row => isTidEnabled(row.tid)),
+    [isTidEnabled],
+  );
 
   // Compute the most-recent procedure date per TID from live data
   const liveDateByTid = useMemo(() => {
     const m: Record<string, number> = {};
     for (const p of liveActorData?.procedures ?? []) {
+      if (!isTidEnabled(p.mitreId)) continue;
       if (p.mitreId && p.date && p.date > (m[p.mitreId] ?? 0)) m[p.mitreId] = p.date;
     }
     return m;
-  }, [liveActorData]);
+  }, [liveActorData, isTidEnabled]);
 
   // Merge live dates into base rows: use the live date when it is more recent than base
-  const enrichedRows = useMemo(() => tidPriority.map(row => {
+  const enrichedRows = useMemo(() => enabledRows.map(row => {
     const baseMs  = row.lastObs > 1e8 ? row.lastObs : Math.round((row.lastObs - 25569) * 86400 * 1000);
     const liveMs  = liveDateByTid[row.tid] ?? 0;
     const isLive  = liveMs > baseMs;
     return { ...row, lastObs: isLive ? liveMs : row.lastObs, _live: isLive };
-  }), [liveDateByTid]);
+  }), [enabledRows, liveDateByTid]);
 
   const filteredBase = useMemo(() =>
     enrichedRows.filter(r => !search || r.tid.toLowerCase().includes(search.toLowerCase())),
@@ -49,9 +56,9 @@ export default function TidPriority() {
   );
   const { sortKey, sortDir, toggle, sorted: filtered } = useSortTable(filteredBase, "risk", "desc");
 
-  const maxRisk  = Math.max(...tidPriority.map(r => r.risk));
-  const critical = tidPriority.filter(r => r.risk >= 1000).length;
-  const high     = tidPriority.filter(r => r.risk >= 600 && r.risk < 1000).length;
+  const maxRisk  = Math.max(...enabledRows.map(r => r.risk), 1);
+  const critical = enabledRows.filter(r => r.risk >= 1000).length;
+  const high     = enabledRows.filter(r => r.risk >= 600 && r.risk < 1000).length;
   const liveCount = Object.keys(liveDateByTid).length;
 
   return (
@@ -59,14 +66,14 @@ export default function TidPriority() {
       <div>
         <h1 className="text-2xl font-bold text-foreground">TID Priority</h1>
         <p className="text-muted-foreground text-sm mt-1">
-          Top {tidPriority.length} technique IDs ranked by risk score and procedure coverage
+          Top {enabledRows.length} technique IDs ranked by risk score and procedure coverage
           {liveCount > 0 && <span className="text-primary"> · {liveCount} TIDs have live last-observed dates</span>}
         </p>
       </div>
 
       <div className="grid grid-cols-4 gap-4">
         <div className="bg-card border border-card-border rounded-xl p-4">
-          <div className="text-2xl font-bold text-primary">{tidPriority.length}</div>
+          <div className="text-2xl font-bold text-primary">{enabledRows.length}</div>
           <div className="text-sm text-muted-foreground mt-1">Techniques Ranked</div>
         </div>
         <div className="bg-card border border-card-border rounded-xl p-4">
@@ -78,7 +85,7 @@ export default function TidPriority() {
           <div className="text-sm text-muted-foreground mt-1">High (600–1000)</div>
         </div>
         <div className="bg-card border border-card-border rounded-xl p-4">
-          <div className="text-2xl font-bold text-chart-2">{Math.max(...tidPriority.map(r => r.count))}</div>
+          <div className="text-2xl font-bold text-chart-2">{Math.max(...enabledRows.map(r => r.count), 0)}</div>
           <div className="text-sm text-muted-foreground mt-1">Max Procedures</div>
         </div>
       </div>
@@ -111,7 +118,7 @@ export default function TidPriority() {
           </div>
           <div className="p-4 space-y-3">
             {[...enrichedRows].sort((a, b) => b.count - a.count).slice(0, 15).map(row => {
-              const maxCount = Math.max(...tidPriority.map(r => r.count));
+              const maxCount = Math.max(...enabledRows.map(r => r.count), 1);
               return (
                 <div key={row.tid}>
                   <div className="flex justify-between text-xs mb-1">

@@ -10,13 +10,13 @@ name = "API Server"
 paths = ["/api"]
 
 [services.development]
-run = "pnpm --filter @workspace/api-server run dev"
+run = "python3 -m uvicorn app.main:app --app-dir artifacts/api-server --host 0.0.0.0 --port 8080 --reload"
 
 [services.production]
-build = "pnpm --filter @workspace/api-server run build"
+build = "python3 -m pip install --user -r artifacts/api-server/requirements.txt"
 
 [services.production.run]
-args = ["node", "artifacts/api-server/dist/index.cjs"]
+args = ["python3", "-m", "uvicorn", "app.main:app", "--app-dir", "artifacts/api-server", "--host", "0.0.0.0", "--port", "8080"]
 
 [services.production.run.env]
 PORT = "8080"

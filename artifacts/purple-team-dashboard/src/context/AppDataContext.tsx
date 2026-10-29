@@ -27,8 +27,17 @@ type TacticDatum = { tactic: string; conf: string; integrity: string; avail: str
 const _tacticData: TacticDatum[] = ((data as any).tactics ?? []) as TacticDatum[];
 
 function _bestTacticForTid(tacticNames: string[]): TacticDatum | null {
+  const disabled = (() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem("pt_disabled_tactics") ?? "[]");
+      return new Set<string>(Array.isArray(stored) ? stored : []);
+    } catch {
+      return new Set<string>();
+    }
+  })();
   let best: TacticDatum | null = null;
   for (const name of tacticNames) {
+    if (disabled.has(name)) continue;
     const t = _tacticData.find(td => td.tactic === name);
     if (!t) continue;
     if (!best || calcCIAScore(t.conf, t.integrity, t.avail) > calcCIAScore(best.conf, best.integrity, best.avail)) {

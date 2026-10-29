@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useMemo, ReactNode } from "react";
 import { useAppData } from "./AppDataContext";
+import { useTacticScores } from "./TacticScoresContext";
 import data from "@/data.json";
 
 export type DateRange = "all" | "3m" | "6m" | "9m" | "1y" | "custom";
@@ -48,6 +49,7 @@ export function useDateWindow(): DateWindowCtx {
 
 export function DateWindowProvider({ children }: { children: ReactNode }) {
   const { liveActorData } = useAppData();
+  const { isTidEnabled } = useTacticScores();
 
   const [dateRange, setDateRange]   = useState<DateRange>("all");
   const [customFrom, setCustomFrom] = useState("");
@@ -73,13 +75,13 @@ export function DateWindowProvider({ children }: { children: ReactNode }) {
     const set = new Set<string>();
     const inWindow = (date: number | null) => date !== null && date >= fromMs && date <= toMs;
     for (const p of allProceduresData) {
-      if (p.mitreId && inWindow(p.date)) set.add(p.mitreId);
+      if (p.mitreId && isTidEnabled(p.mitreId) && inWindow(p.date)) set.add(p.mitreId);
     }
     for (const p of liveActorData?.procedures ?? []) {
-      if (p.mitreId && inWindow(p.date)) set.add(p.mitreId);
+      if (p.mitreId && isTidEnabled(p.mitreId) && inWindow(p.date)) set.add(p.mitreId);
     }
     return set;
-  }, [dateRange, fromMs, toMs, liveActorData]);
+  }, [dateRange, fromMs, toMs, liveActorData, isTidEnabled]);
 
   return (
     <Ctx.Provider value={{

@@ -93,15 +93,16 @@ export default function RiskCalculation() {
     [selectedQuarter],
   );
 
-  const { overrides: tacticOverrides }     = useTacticScores();
+  const { overrides: tacticOverrides, areTacticsEnabled, isTidEnabled } = useTacticScores();
   const { overrides: likelihoodOverrides } = useLikelihood();
   const { overrides: impactOverrides }     = useImpactOverrides();
   const { hvaScoreMap }                    = useHVAScores();
   const { activeNewRiskRows, liveActorData } = useAppData();
 
   const allRawRows = useMemo(
-    () => [...rawRiskCalc, ...(activeNewRiskRows as RiskRow[])],
-    [activeNewRiskRows]
+    () => [...rawRiskCalc, ...(activeNewRiskRows as RiskRow[])]
+      .filter(row => isTidEnabled(row.TID) && areTacticsEnabled(row.Tactic ?? "")),
+    [activeNewRiskRows, areTacticsEnabled, isTidEnabled]
   );
 
   const riskCalc = useMemo(
@@ -119,6 +120,7 @@ export default function RiskCalculation() {
       ...(liveActorData?.procedures ?? []),
     ];
     for (const procedure of procedures) {
+      if (!isTidEnabled(procedure.mitreId)) continue;
       const date = procedure.date;
       if (!procedure.mitreId || date == null || date < quarterWindow.fromMs || date > quarterWindow.toMs) continue;
       const current = evidence.get(procedure.mitreId);
@@ -128,7 +130,7 @@ export default function RiskCalculation() {
       });
     }
     return evidence;
-  }, [quarterWindow, liveActorData]);
+  }, [quarterWindow, liveActorData, isTidEnabled]);
 
   const quarterRiskCalc = useMemo<QuarterRiskRow[]>(() => {
     if (!quarterWindow) return [];

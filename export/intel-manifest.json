@@ -1,0 +1,24 @@
+{
+  "files": [
+    {
+      "src": "export/intel/index.html",
+      "dest": "catalog/intel/index.html"
+    },
+    {
+      "src": "export/intel/intel.css",
+      "dest": "catalog/intel/intel.css"
+    },
+    {
+      "src": "export/intel/intel.js",
+      "dest": "catalog/intel/intel.js"
+    },
+    {
+      "src": "artifacts/purple-team-dashboard/src/data.json",
+      "dest": "catalog/data/intel.json"
+    },
+    {
+      "src": "artifacts/purple-team-dashboard/src/threatModelData.json",
+      "dest": "catalog/data/intel-threat-model.json"
+    }
+  ]
+}

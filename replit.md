@@ -2,17 +2,17 @@
 
 ## Overview
 
-pnpm workspace monorepo using TypeScript. Each package manages its own dependencies.
+React/pnpm frontend workspace with a Python FastAPI backend.
 
 ## Stack
 
 - **Monorepo tool**: pnpm workspaces
-- **Node.js version**: 24
+- **Node.js version**: 24 (frontend tooling)
+- **Python version**: 3.13
 - **Package manager**: pnpm
 - **TypeScript version**: 5.9
-- **API framework**: Express 5
-- **Database**: PostgreSQL + Drizzle ORM
-- **Validation**: Zod (`zod/v4`), `drizzle-zod`
+- **API framework**: FastAPI + Uvicorn
+- **Database**: PostgreSQL + psycopg
 - **API codegen**: Orval (from OpenAPI spec)
 - **Build**: esbuild (CJS bundle)
 
@@ -21,12 +21,11 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 ```text
 artifacts-monorepo/
 ├── artifacts/              # Deployable applications
-│   └── api-server/         # Express API server
+│   └── api-server/         # Python FastAPI server
 ├── lib/                    # Shared libraries
 │   ├── api-spec/           # OpenAPI spec + Orval codegen config
 │   ├── api-client-react/   # Generated React Query hooks
-│   ├── api-zod/            # Generated Zod schemas from OpenAPI
-│   └── db/                 # Drizzle ORM schema + DB connection
+│   └── api-zod/            # Generated frontend schemas from OpenAPI
 ├── scripts/                # Utility scripts (single workspace package)
 │   └── src/                # Individual .ts scripts, run via `pnpm --filter @workspace/scripts run <script>`
 ├── pnpm-workspace.yaml     # pnpm workspace (artifacts/*, lib/*, lib/integrations/*, scripts)
@@ -50,30 +49,18 @@ Every package extends `tsconfig.base.json` which sets `composite: true`. The roo
 
 ## Packages
 
-### `artifacts/api-server` (`@workspace/api-server`)
+### `artifacts/api-server`
 
-Express 5 API server. Routes live in `src/routes/` and use `@workspace/api-zod` for request and response validation and `@workspace/db` for persistence.
+Python FastAPI service. Routes live in `app/`; PostgreSQL access uses psycopg and the existing `threat_model_snapshots` schema.
 
-- Entry: `src/index.ts` — reads `PORT`, starts Express
-- App setup: `src/app.ts` — mounts CORS, JSON/urlencoded parsing, routes at `/api`
-- Routes: `src/routes/index.ts` mounts sub-routers; `src/routes/health.ts` exposes `GET /health` (full path: `/api/health`); `src/routes/crowdstrike.ts` exposes CrowdStrike Intel API proxy routes
-- **CrowdStrike routes** (`/api/cs/*`): `GET /cs/status`, `POST /cs/connect`, `POST /cs/sync`, `GET /cs/sync-result`; sync state persisted to `cs-sync-state.json` in the artifact root; weekly auto-sync triggered on startup if `CS_CLIENT_ID` + `CS_CLIENT_SECRET` secrets are configured and last sync > 7 days; proxied from the frontend via Vite dev server proxy (see `vite.config.ts` in purple-team-dashboard)
-- Depends on: `@workspace/db`, `@workspace/api-zod`
-- `pnpm --filter @workspace/api-server run dev` — run the dev server
-- `pnpm --filter @workspace/api-server run build` — production esbuild bundle (`dist/index.cjs`)
-- Build bundles an allowlist of deps (express, cors, pg, drizzle-orm, zod, etc.) and externalizes the rest
-
-### `lib/db` (`@workspace/db`)
-
-Database layer using Drizzle ORM with PostgreSQL. Exports a Drizzle client instance and schema models.
-
-- `src/index.ts` — creates a `Pool` + Drizzle instance, exports schema
-- `src/schema/index.ts` — barrel re-export of all models
-- `src/schema/<modelname>.ts` — table definitions with `drizzle-zod` insert schemas (no models definitions exist right now)
-- `drizzle.config.ts` — Drizzle Kit config (requires `DATABASE_URL`, automatically provided by Replit)
-- Exports: `.` (pool, db, schema), `./schema` (schema only)
-
-Production migrations are handled by Replit when publishing. In development, we just use `pnpm --filter @workspace/db run push`, and we fallback to `pnpm --filter @workspace/db run push-force`.
+- Entry: `app/main.py` — creates FastAPI and mounts routes at `/api`
+- Access: the API has no application-level authentication; restrict deployments at the network edge
+- Routes: `app/crowdstrike.py`, `app/exports.py`, and `app/state.py`; health is `GET /api/healthz`
+- **CrowdStrike routes** (`/api/cs/*`): `GET /cs/status`, `POST /cs/connect`, `POST /cs/sync`, `GET /cs/sync-result`; credentials and sync state persist in PostgreSQL; weekly auto-sync is triggered on startup when credentials exist and the last sync is more than 7 days old
+- **Application state** (`/api/state`): persists tracked browser state in PostgreSQL; `localStorage` is hydrated as a client cache before React renders
+- `python3 -m pip install -r artifacts/api-server/requirements.txt` — install dependencies
+- `pnpm run dev:api` — run the development server
+- Production runs Uvicorn directly; Python has no bundle step
 
 ### `lib/api-spec` (`@workspace/api-spec`)
 
@@ -123,4 +110,4 @@ React + Vite SPA — Purple Team Adversary Prioritisation dashboard (dark navy/p
 
 ### `scripts` (`@workspace/scripts`)
 
-Utility scripts package. Each script is a `.ts` file in `src/` with a corresponding npm script in `package.json`. Run scripts via `pnpm --filter @workspace/scripts run <script>`. Scripts can import any workspace package (e.g., `@workspace/db`) by adding it as a dependency in `scripts/package.json`.
+Utility scripts package. TypeScript utilities live in `src/` with corresponding npm scripts. `scripts/dev.py` starts the Python API and Vite dashboard together.

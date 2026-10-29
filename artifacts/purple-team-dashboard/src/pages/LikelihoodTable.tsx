@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback, Fragment } from "react";
 import { useDateWindow } from "@/context/DateWindowContext";
 import { Link } from "wouter";
 import { useLikelihood } from "@/context/LikelihoodContext";
+import { useTacticScores } from "@/context/TacticScoresContext";
 import { useAppData, baseFullRiskCalc } from "@/context/AppDataContext";
 import { useHVAScores } from "@/context/HVAScoresContext";
 import {
@@ -68,6 +69,7 @@ type ComputedRow = RiskRow & {
 
 export default function LikelihoodTable() {
   const { overrides, setOverride, resetOverride, resetAll } = useLikelihood();
+  const { areTacticsEnabled, isTidEnabled } = useTacticScores();
   const { activeNewRiskRows, liveActorData } = useAppData();
   const { hvaScoreMap: hvaScores } = useHVAScores();
   const { tidsInWindow } = useDateWindow();
@@ -83,14 +85,16 @@ export default function LikelihoodTable() {
   const liveDateByTid = useMemo(() => {
     const m: Record<string, number> = {};
     for (const p of liveActorData?.procedures ?? []) {
+      if (!isTidEnabled(p.mitreId)) continue;
       if (p.mitreId && p.date && p.date > (m[p.mitreId] ?? 0)) m[p.mitreId] = p.date;
     }
     return m;
-  }, [liveActorData]);
+  }, [liveActorData, isTidEnabled]);
 
   const allSourceRows = useMemo(
-    () => [...rawRiskCalc, ...(activeNewRiskRows as RiskRow[])],
-    [activeNewRiskRows]
+    () => [...rawRiskCalc, ...(activeNewRiskRows as RiskRow[])]
+      .filter(row => isTidEnabled(row.TID) && areTacticsEnabled(row.Tactic ?? "")),
+    [activeNewRiskRows, areTacticsEnabled, isTidEnabled]
   );
 
   const allTactics = useMemo(
@@ -181,8 +185,8 @@ export default function LikelihoodTable() {
 
   const overrideCount = Object.keys(overrides).length;
   const vhCount = computed.filter(r => r._likRate === "Very High").length;
-  const avgLik  = computed.reduce((s, r) => s + r._likScore, 0) / computed.length;
-  const maxLik  = Math.max(...computed.map(r => r._likScore));
+  const avgLik  = computed.reduce((s, r) => s + r._likScore, 0) / (computed.length || 1);
+  const maxLik  = Math.max(...computed.map(r => r._likScore), 0);
   const liveDateCount = Object.keys(liveDateByTid).length;
 
   return (
