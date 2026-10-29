@@ -24,7 +24,7 @@ npm install -g pnpm
 ```bash
 # 1. Clone the repo
 git clone git@git.dev.box.net:sfiliaggi/threatintel
-cd purple_team_priorities_app
+cd threatintel/
 
 # 2. Install all workspace dependencies
 pnpm install
